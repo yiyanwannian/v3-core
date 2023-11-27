@@ -34,15 +34,22 @@ library SwapMath {
             uint256 feeAmount
         )
     {
+        // 判断交换方向，如果当前价格大于等于目标价格，则从Token 0到Token 1，否则从Token 1到Token 0
         bool zeroForOne = sqrtRatioCurrentX96 >= sqrtRatioTargetX96;
+        // 判断交换类型，如果剩余金额大于等于0，则为精确输入，否则为精确输出
         bool exactIn = amountRemaining >= 0;
 
+        // 如果是精确输入交换
         if (exactIn) {
+            // 计算去除手续费后的剩余输入金额
             uint256 amountRemainingLessFee = FullMath.mulDiv(uint256(amountRemaining), 1e6 - feePips, 1e6);
+            // 计算在当前价格和目标价格之间的输入金额
             amountIn = zeroForOne
                 ? SqrtPriceMath.getAmount0Delta(sqrtRatioTargetX96, sqrtRatioCurrentX96, liquidity, true)
                 : SqrtPriceMath.getAmount1Delta(sqrtRatioCurrentX96, sqrtRatioTargetX96, liquidity, true);
+            // 如果去除手续费后的剩余输入金额大于等于计算的输入金额，则新平方根价格为目标价格
             if (amountRemainingLessFee >= amountIn) sqrtRatioNextX96 = sqrtRatioTargetX96;
+                // 否则，根据剩余输入金额计算新的平方根价格
             else
                 sqrtRatioNextX96 = SqrtPriceMath.getNextSqrtPriceFromInput(
                     sqrtRatioCurrentX96,
@@ -51,10 +58,13 @@ library SwapMath {
                     zeroForOne
                 );
         } else {
+            // 如果是精确输出交换，计算在当前价格和目标价格之间的输出金额
             amountOut = zeroForOne
                 ? SqrtPriceMath.getAmount1Delta(sqrtRatioTargetX96, sqrtRatioCurrentX96, liquidity, false)
                 : SqrtPriceMath.getAmount0Delta(sqrtRatioCurrentX96, sqrtRatioTargetX96, liquidity, false);
+            // 如果剩余输出金额的绝对值大于等于计算的输出金额，则新平方根价格为目标价格
             if (uint256(-amountRemaining) >= amountOut) sqrtRatioNextX96 = sqrtRatioTargetX96;
+                // 否则，根据剩余输出金额计算新的平方根价格
             else
                 sqrtRatioNextX96 = SqrtPriceMath.getNextSqrtPriceFromOutput(
                     sqrtRatioCurrentX96,
@@ -64,9 +74,10 @@ library SwapMath {
                 );
         }
 
+        // 判断是否已达到目标价格
         bool max = sqrtRatioTargetX96 == sqrtRatioNextX96;
 
-        // get the input/output amounts
+        // 计算输入/输出金额
         if (zeroForOne) {
             amountIn = max && exactIn
                 ? amountIn
@@ -83,11 +94,12 @@ library SwapMath {
                 : SqrtPriceMath.getAmount0Delta(sqrtRatioCurrentX96, sqrtRatioNextX96, liquidity, false);
         }
 
-        // cap the output amount to not exceed the remaining output amount
+        // 如果是精确输出交换，确保输出金额不超过剩余输出金额
         if (!exactIn && amountOut > uint256(-amountRemaining)) {
             amountOut = uint256(-amountRemaining);
         }
 
+        // 如果是精确输入交换且未达到目标价格，则将剩余输入金额作为手续费
         if (exactIn && sqrtRatioNextX96 != sqrtRatioTargetX96) {
             // we didn't reach the target, so take the remainder of the maximum input as fee
             feeAmount = uint256(amountRemaining) - amountIn;
